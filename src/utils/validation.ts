@@ -51,7 +51,7 @@ export function validateBackupPayload(data: unknown): BackupValidationResult {
       !g.name ||
       typeof g.name !== 'string' ||
       typeof g.target !== 'number' ||
-      !['boolean', 'numeric', 'duration', 'count'].includes(g.type)
+      !['boolean', 'numeric', 'duration', 'count', 'measurement'].includes(g.type)
     ) {
       return { valid: false, error: `Invalid goal format at index ${i} (${g.name || 'Unnamed'}).` };
     }

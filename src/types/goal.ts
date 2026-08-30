@@ -1,5 +1,5 @@
-export type GoalType = 'boolean' | 'numeric' | 'duration' | 'count';
-export type GoalFrequency = 'daily' | 'weekly' | 'weekdays' | 'weekends';
+export type GoalType = 'boolean' | 'numeric' | 'duration' | 'count' | 'measurement';
+export type GoalFrequency = 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'monthly';
 
 export interface Goal {
   id: string;

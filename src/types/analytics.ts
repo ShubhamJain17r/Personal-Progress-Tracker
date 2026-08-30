@@ -28,6 +28,9 @@ export interface MetricSummary {
   averageValue: number;
   minValue: number;
   maxValue: number;
+  latestValue?: number;
+  initialValue?: number;
+  changeValue?: number;
   completionRate: number;
   totalScheduledDays: number;
   completedDays: number;

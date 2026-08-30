@@ -62,6 +62,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
     if (newType === 'boolean') {
       setTarget('1');
       setUnit('done');
+      setFrequency('daily');
     } else if (newType === 'numeric') {
       if (target === '1') setTarget('10000');
       if (unit === 'done' || unit === 'hrs') setUnit('steps');
@@ -71,17 +72,21 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
     } else if (newType === 'count') {
       if (target === '10000' || target === '30') setTarget('5');
       setUnit('items');
+    } else if (newType === 'measurement') {
+      setTarget('0');
+      setUnit('kg');
+      setFrequency('weekly');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Please provide a goal name.');
+      setError('Please provide a goal/metric name.');
       return;
     }
-    const parsedTarget = parseFloat(target);
-    if (isNaN(parsedTarget) || parsedTarget <= 0) {
+    const parsedTarget = parseFloat(target) || 0;
+    if (type !== 'measurement' && parsedTarget <= 0) {
       setError('Target value must be greater than 0.');
       return;
     }
@@ -114,7 +119,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={initialGoal ? 'Edit Goal' : 'Create New Goal'}
+      title={initialGoal ? 'Edit Goal or Metric' : 'Create Goal / Metric Log'}
       maxWidth="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -125,8 +130,8 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
         )}
 
         <Input
-          label="Goal Name"
-          placeholder="e.g. Morning Workout, Study Algorithms, Read 30 Mins"
+          label="Name"
+          placeholder="e.g. Weekly Body Weight, Money Saved, Morning Workout, Read Book"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -134,7 +139,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
 
         <Input
           label="Description (Optional)"
-          placeholder="e.g. Cardio and stretching routine"
+          placeholder="e.g. Weigh in every Sunday morning, or Track investment deposits"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -163,12 +168,13 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
           </div>
 
           <Select
-            label="Goal Type"
+            label="Type"
             options={[
               { value: 'boolean', label: 'Boolean (Yes / No Check-in)' },
               { value: 'numeric', label: 'Numeric (e.g. Steps, Calories)' },
               { value: 'duration', label: 'Duration (e.g. Hours, Minutes)' },
               { value: 'count', label: 'Count (e.g. Problems, Pages)' },
+              { value: 'measurement', label: 'Measurement / Log (e.g. Weight, Height, Money Saved)' },
             ]}
             value={type}
             onChange={(e) => handleTypeChange(e.target.value as GoalType)}
@@ -177,18 +183,30 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label={type === 'boolean' ? 'Target (Completed = 1)' : 'Daily Target'}
+            label={
+              type === 'boolean'
+                ? 'Target (Completed = 1)'
+                : type === 'measurement'
+                ? 'Optional Target (Set 0 if none)'
+                : 'Target Value'
+            }
             type="number"
             step="any"
             disabled={type === 'boolean'}
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            required
+            required={type !== 'measurement'}
           />
 
           <Input
             label="Unit Label"
-            placeholder={type === 'boolean' ? 'done' : 'e.g. steps, mins, pages'}
+            placeholder={
+              type === 'boolean'
+                ? 'done'
+                : type === 'measurement'
+                ? 'e.g. kg, lbs, cm, $, %'
+                : 'e.g. steps, mins, pages'
+            }
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
           />
@@ -198,10 +216,11 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
           <Select
             label="Frequency"
             options={[
-              { value: 'daily', label: 'Every Day' },
+              { value: 'daily', label: 'Daily (Every Day)' },
+              { value: 'weekly', label: 'Weekly (e.g. Weekly Log)' },
+              { value: 'monthly', label: 'Monthly (e.g. Monthly Savings/Height)' },
               { value: 'weekdays', label: 'Weekdays Only' },
               { value: 'weekends', label: 'Weekends Only' },
-              { value: 'weekly', label: 'Weekly' },
             ]}
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as GoalFrequency)}
@@ -216,7 +235,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
                 className="h-4 w-4 rounded text-brand-600 focus:ring-brand-500 rounded-md border-slate-300"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Active in daily tracking
+                Active in tracking view
               </span>
             </label>
           </div>
@@ -227,7 +246,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
             Cancel
           </Button>
           <Button type="submit" isLoading={isSubmitting} size="sm">
-            {initialGoal ? 'Save Changes' : 'Create Goal'}
+            {initialGoal ? 'Save Changes' : 'Create Item'}
           </Button>
         </div>
       </form>

@@ -67,10 +67,16 @@ export const GoalCard: React.FC<GoalCardProps> = ({
         <div className="my-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 p-3 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              Daily Target
+              {goal.type === 'measurement' ? 'Tracking Target' : 'Daily Target'}
             </span>
             <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-              {goal.type === 'boolean' ? 'Completed Daily' : `${goal.target.toLocaleString()} ${goal.unit}`}
+              {goal.type === 'boolean'
+                ? 'Completed Daily'
+                : goal.type === 'measurement'
+                ? goal.target > 0
+                  ? `Target: ${goal.target.toLocaleString()} ${goal.unit}`
+                  : `Periodic Log (${goal.unit})`
+                : `${goal.target.toLocaleString()} ${goal.unit}`}
             </span>
           </div>
 

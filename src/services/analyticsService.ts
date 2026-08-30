@@ -14,6 +14,9 @@ import { getDateIntervalArray } from '../utils/dates';
 import { calculateGoalStreaks } from '../utils/streaks';
 
 export const analyticsService = {
+  /**
+   * Generates time-series day data points for a specific goal over a date range
+   */
   getGoalTimeSeries(
     goal: Goal,
     records: DailyRecord[],
@@ -28,9 +31,19 @@ export const analyticsService = {
       }
     }
 
+    const isMeasurement = goal.type === 'measurement';
+    let lastKnownVal = 0;
+
     return dates.map((dateStr) => {
       const rec = recordMap.get(dateStr);
-      const val = rec ? rec.value : 0;
+      let val = rec ? rec.value : 0;
+
+      // For measurements, if there is a recorded entry use it; if no entry on this day,
+      // lastKnownVal can be preserved if there was an earlier reading, or 0 if unrecorded.
+      if (rec) {
+        lastKnownVal = rec.value;
+      }
+
       const completed = rec ? rec.completed : false;
       const completionPercentage = calculateCappedProgress(goal.target, val, goal.type);
 
@@ -40,7 +53,7 @@ export const analyticsService = {
       return {
         date: dateStr,
         displayDate,
-        value: val,
+        value: val > 0 ? val : (isMeasurement && lastKnownVal > 0 ? lastKnownVal : val),
         target: goal.target,
         completed,
         completionPercentage,
@@ -49,6 +62,9 @@ export const analyticsService = {
     });
   },
 
+  /**
+   * Calculates comprehensive summary statistics for a specific goal over a date range
+   */
   calculateMetricSummary(
     goal: Goal,
     allRecordsForGoal: DailyRecord[],
@@ -58,43 +74,49 @@ export const analyticsService = {
     const category = categories.find((c) => c.id === goal.categoryId);
     const dateInterval = getDateIntervalArray(dateRange.startDate, dateRange.endDate);
     const scheduledDaysCount = dateInterval.length;
+    const isMeasurement = goal.type === 'measurement';
 
-    const rangeRecords = allRecordsForGoal.filter(
-      (r) => r.date >= dateRange.startDate && r.date <= dateRange.endDate
-    );
-
-    const recordDateMap = new Map<string, DailyRecord>();
-    for (const r of rangeRecords) {
-      recordDateMap.set(r.date, r);
-    }
+    // Filter records within the specified date range and sort chronologically
+    const rangeRecords = allRecordsForGoal
+      .filter((r) => r.date >= dateRange.startDate && r.date <= dateRange.endDate)
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     let totalValue = 0;
     let completedDays = 0;
     let minValue = Infinity;
     let maxValue = -Infinity;
+    const recordedValues: number[] = [];
 
-    for (const dStr of dateInterval) {
-      const rec = recordDateMap.get(dStr);
-      if (rec) {
+    for (const rec of rangeRecords) {
+      if (rec.value > 0 || !isMeasurement) {
+        recordedValues.push(rec.value);
         totalValue += rec.value;
         if (rec.value < minValue) minValue = rec.value;
         if (rec.value > maxValue) maxValue = rec.value;
         if (isGoalCompleted(goal, rec.value)) {
           completedDays++;
         }
-      } else {
-        if (0 < minValue) minValue = 0;
       }
     }
 
     if (minValue === Infinity) minValue = 0;
     if (maxValue === -Infinity) maxValue = 0;
 
-    const averageValue = scheduledDaysCount > 0 ? totalValue / scheduledDaysCount : 0;
-    const missedDays = Math.max(0, scheduledDaysCount - completedDays);
-    const completionRate =
-      scheduledDaysCount > 0 ? Math.round((completedDays / scheduledDaysCount) * 100) : 0;
+    const initialValue = recordedValues.length > 0 ? recordedValues[0] : 0;
+    const latestValue = recordedValues.length > 0 ? recordedValues[recordedValues.length - 1] : 0;
+    const changeValue =
+      recordedValues.length > 1 ? Math.round((latestValue - initialValue) * 100) / 100 : 0;
 
+    const averageValue = isMeasurement
+      ? (recordedValues.length > 0 ? totalValue / recordedValues.length : 0)
+      : (scheduledDaysCount > 0 ? totalValue / scheduledDaysCount : 0);
+
+    const missedDays = Math.max(0, scheduledDaysCount - completedDays);
+    const completionRate = isMeasurement
+      ? (recordedValues.length > 0 ? 100 : 0)
+      : (scheduledDaysCount > 0 ? Math.round((completedDays / scheduledDaysCount) * 100) : 0);
+
+    // Calculate streaks across historical data
     const streaks = calculateGoalStreaks(goal, allRecordsForGoal, dateRange.endDate);
 
     return {
@@ -109,6 +131,9 @@ export const analyticsService = {
       averageValue: Math.round(averageValue * 100) / 100,
       minValue: Math.round(minValue * 100) / 100,
       maxValue: Math.round(maxValue * 100) / 100,
+      initialValue,
+      latestValue,
+      changeValue,
       completionRate,
       totalScheduledDays: scheduledDaysCount,
       completedDays,
@@ -118,6 +143,9 @@ export const analyticsService = {
     };
   },
 
+  /**
+   * Calculates overall aggregate performance across all active goals
+   */
   calculateOverallSummary(
     goals: Goal[],
     records: DailyRecord[],
@@ -130,6 +158,7 @@ export const analyticsService = {
 
     const goalMap = new Map(activeGoals.map((g) => [g.id, g]));
 
+    // Group records by date & goal
     const dateMap = new Map<string, Map<string, DailyRecord>>();
     for (const r of records) {
       if (r.date >= dateRange.startDate && r.date <= dateRange.endDate && goalMap.has(r.goalId)) {
@@ -144,6 +173,7 @@ export const analyticsService = {
     let perfectDaysCount = 0;
     let totalCheckins = 0;
 
+    // Category tracking
     const catStats = new Map<string, { total: number; completed: number }>();
     for (const c of categories) {
       catStats.set(c.id, { total: 0, completed: 0 });
@@ -205,6 +235,9 @@ export const analyticsService = {
     };
   },
 
+  /**
+   * Computes calendar heatmap matrix for long-term consistency
+   */
   calculateHeatmapData(
     activeGoals: Goal[],
     records: DailyRecord[],
@@ -213,6 +246,7 @@ export const analyticsService = {
     const dates = getDateIntervalArray(dateRange.startDate, dateRange.endDate);
     const goalMap = new Map(activeGoals.map((g) => [g.id, g]));
 
+    // Group records by date
     const dateRecords = new Map<string, DailyRecord[]>();
     for (const r of records) {
       if (goalMap.has(r.goalId)) {
