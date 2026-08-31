@@ -115,6 +115,11 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
     }
   };
 
+  const categoryOptions =
+    categories.length > 0
+      ? categories.map((c) => ({ value: c.id, label: c.name }))
+      : [{ value: '', label: '-- No Category (Click New Category above) --' }];
+
   return (
     <Modal
       isOpen={isOpen}
@@ -131,7 +136,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
 
         <Input
           label="Name"
-          placeholder="e.g. Weekly Body Weight, Money Saved, Morning Workout, Read Book"
+          placeholder="e.g. Morning Workout, Daily Steps, Weekly Body Weight, Money Saved"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -139,7 +144,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
 
         <Input
           label="Description (Optional)"
-          placeholder="e.g. Weigh in every Sunday morning, or Track investment deposits"
+          placeholder="e.g. Routine details, reminders, or notes"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -161,7 +166,7 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
               )}
             </div>
             <Select
-              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+              options={categoryOptions}
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
             />
@@ -217,10 +222,10 @@ export const GoalFormModal: React.FC<GoalFormModalProps> = ({
             label="Frequency"
             options={[
               { value: 'daily', label: 'Daily (Every Day)' },
-              { value: 'weekly', label: 'Weekly (e.g. Weekly Log)' },
-              { value: 'monthly', label: 'Monthly (e.g. Monthly Savings/Height)' },
-              { value: 'weekdays', label: 'Weekdays Only' },
-              { value: 'weekends', label: 'Weekends Only' },
+              { value: 'weekly', label: 'Weekly (Sundays Only)' },
+              { value: 'weekdays', label: 'Weekdays Only (Mon-Fri)' },
+              { value: 'weekends', label: 'Weekends Only (Sat-Sun)' },
+              { value: 'monthly', label: 'Monthly (1st of month)' },
             ]}
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as GoalFrequency)}
