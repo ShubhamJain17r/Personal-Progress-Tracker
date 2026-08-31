@@ -31,16 +31,10 @@ export const analyticsService = {
       }
     }
 
-    const isMeasurement = goal.type === 'measurement';
-    let lastKnownVal = 0;
-
     return dates.map((dateStr) => {
       const rec = recordMap.get(dateStr);
-      let val = rec ? rec.value : 0;
-
-      if (rec && rec.value > 0) {
-        lastKnownVal = rec.value;
-      }
+      const val = rec ? rec.value : 0;
+      const hasRecord = Boolean(rec && (rec.value > 0 || rec.completed));
 
       const completed = rec ? rec.completed : false;
       const completionPercentage = calculateCappedProgress(goal.target, val, goal.type);
@@ -51,7 +45,8 @@ export const analyticsService = {
       return {
         date: dateStr,
         displayDate,
-        value: val > 0 ? val : (isMeasurement && lastKnownVal > 0 ? lastKnownVal : val),
+        value: val,
+        hasRecord,
         target: goal.target,
         completed,
         completionPercentage,
@@ -75,7 +70,7 @@ export const analyticsService = {
     const isMeasurement = goal.type === 'measurement';
 
     const rangeRecords = allRecordsForGoal
-      .filter((r) => r.date >= dateRange.startDate && r.date <= dateRange.endDate)
+      .filter((r) => r.date >= dateRange.startDate && r.date <= dateRange.endDate && (r.value > 0 || r.completed))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const recordMap = new Map<string, DailyRecord>();
@@ -89,16 +84,13 @@ export const analyticsService = {
     let maxValue = -Infinity;
     const recordedValues: number[] = [];
 
-    for (const dStr of scheduledDates) {
-      const rec = recordMap.get(dStr);
-      if (rec && (rec.value > 0 || isGoalCompleted(goal, rec.value))) {
-        recordedValues.push(rec.value);
-        totalValue += rec.value;
-        if (rec.value < minValue) minValue = rec.value;
-        if (rec.value > maxValue) maxValue = rec.value;
-        if (isGoalCompleted(goal, rec.value)) {
-          completedDays++;
-        }
+    for (const rec of rangeRecords) {
+      recordedValues.push(rec.value);
+      totalValue += rec.value;
+      if (rec.value < minValue) minValue = rec.value;
+      if (rec.value > maxValue) maxValue = rec.value;
+      if (isGoalCompleted(goal, rec.value)) {
+        completedDays++;
       }
     }
 
@@ -111,8 +103,8 @@ export const analyticsService = {
       recordedValues.length > 1 ? Math.round((latestValue - initialValue) * 100) / 100 : 0;
 
     const averageValue = isMeasurement
-      ? (recordedValues.length > 0 ? totalValue / recordedValues.length : 0)
-      : (scheduledDaysCount > 0 ? totalValue / scheduledDaysCount : 0);
+      ? (recordedValues.length > 0 ? Math.round((totalValue / recordedValues.length) * 100) / 100 : 0)
+      : (scheduledDaysCount > 0 ? Math.round((totalValue / scheduledDaysCount) * 100) / 100 : 0);
 
     const missedDays = Math.max(0, scheduledDaysCount - completedDays);
     const completionRate =
@@ -129,7 +121,7 @@ export const analyticsService = {
       unit: goal.unit,
       target: goal.target,
       totalValue: Math.round(totalValue * 100) / 100,
-      averageValue: Math.round(averageValue * 100) / 100,
+      averageValue,
       minValue: Math.round(minValue * 100) / 100,
       maxValue: Math.round(maxValue * 100) / 100,
       initialValue,

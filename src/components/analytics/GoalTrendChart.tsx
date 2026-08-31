@@ -22,6 +22,7 @@ export interface GoalTrendChartProps {
 
 export const GoalTrendChart: React.FC<GoalTrendChartProps> = ({ goal, data }) => {
   const isBoolean = goal.type === 'boolean';
+  const isMeasurement = goal.type === 'measurement';
 
   return (
     <Card className="p-5">
@@ -33,7 +34,9 @@ export const GoalTrendChart: React.FC<GoalTrendChartProps> = ({ goal, data }) =>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {isBoolean
               ? 'Daily completion status over selected period'
-              : `Recorded values vs daily target (${goal.target} ${goal.unit})`}
+              : isMeasurement
+              ? `Logged readings and measurements (${goal.unit})`
+              : `Recorded values vs target (${goal.target} ${goal.unit})`}
           </p>
         </div>
       </div>
@@ -104,10 +107,16 @@ export const GoalTrendChart: React.FC<GoalTrendChartProps> = ({ goal, data }) =>
                     return (
                       <div className="rounded-xl bg-slate-900 text-white p-3 text-xs shadow-xl border border-slate-800">
                         <p className="font-bold text-slate-200">{d.date}</p>
-                        <p className="mt-1 font-semibold text-sky-400">
-                          Recorded: {d.value} {goal.unit} ({d.completionPercentage}%)
-                        </p>
-                        <p className="text-slate-400">Target: {goal.target} {goal.unit}</p>
+                        {d.hasRecord ? (
+                          <p className="mt-1 font-semibold text-sky-400">
+                            Logged: {d.value} {goal.unit}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-slate-400 italic">No entry recorded</p>
+                        )}
+                        {goal.target > 0 && (
+                          <p className="text-slate-400 text-[11px]">Target: {goal.target} {goal.unit}</p>
+                        )}
                         {d.note && <p className="mt-1 text-amber-300 italic">"{d.note}"</p>}
                       </div>
                     );
@@ -115,22 +124,26 @@ export const GoalTrendChart: React.FC<GoalTrendChartProps> = ({ goal, data }) =>
                   return null;
                 }}
               />
-              <ReferenceLine
-                y={goal.target}
-                stroke="#f59e0b"
-                strokeDasharray="4 4"
-                label={{
-                  value: `Target (${goal.target} ${goal.unit})`,
-                  fill: '#f59e0b',
-                  fontSize: 10,
-                  position: 'top',
-                }}
-              />
+              {goal.target > 0 && (
+                <ReferenceLine
+                  y={goal.target}
+                  stroke="#f59e0b"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: `Target (${goal.target} ${goal.unit})`,
+                    fill: '#f59e0b',
+                    fontSize: 10,
+                    position: 'top',
+                  }}
+                />
+              )}
               <Area
                 type="monotone"
                 dataKey="value"
                 stroke="#0284c7"
                 strokeWidth={2.5}
+                dot={isMeasurement ? { r: 3.5, fill: '#0284c7', strokeWidth: 1 } : false}
+                activeDot={{ r: 6 }}
                 fillOpacity={1}
                 fill="url(#goalGradient)"
               />

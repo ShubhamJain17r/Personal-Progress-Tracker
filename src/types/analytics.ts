@@ -43,6 +43,7 @@ export interface DayDataPoint {
   date: string;
   displayDate: string;
   value: number;
+  hasRecord: boolean;
   target: number;
   completed: boolean;
   completionPercentage: number;

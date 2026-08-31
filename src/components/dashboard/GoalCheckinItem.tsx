@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Plus, Minus, FileText, Flame, Save } from 'lucide-react';
+import { Check, Plus, Minus, FileText, Flame, Save, CheckCircle2 } from 'lucide-react';
 import { Goal } from '../../types/goal';
 import { DailyRecord } from '../../types/record';
 import { Category } from '../../types/category';
@@ -16,7 +16,7 @@ export interface GoalCheckinItemProps {
   record?: DailyRecord;
   category?: Category;
   streak?: number;
-  onUpdateValue: (value: number) => void;
+  onUpdateValue: (value: number) => Promise<void> | void;
   onOpenNote: () => void;
 }
 
@@ -34,38 +34,52 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
   const hasNote = Boolean(record?.note && record.note.trim().length > 0);
 
   const [localInput, setLocalInput] = useState<string>(currentValue > 0 ? String(currentValue) : '');
-  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [justSaved, setJustSaved] = useState<boolean>(false);
 
   useEffect(() => {
     setLocalInput(currentValue > 0 ? String(currentValue) : '');
   }, [currentValue]);
 
+  const commitValue = async (val: number) => {
+    await onUpdateValue(val);
+    setJustSaved(true);
+    setTimeout(() => {
+      setJustSaved(false);
+    }, 1800);
+  };
+
   const handleInputBlur = () => {
-    setIsEditing(false);
     const parsed = parseFloat(localInput);
     if (!isNaN(parsed) && parsed >= 0) {
-      onUpdateValue(parsed);
+      if (parsed !== currentValue) {
+        commitValue(parsed);
+      }
     } else if (localInput === '') {
-      onUpdateValue(0);
+      if (currentValue !== 0) {
+        commitValue(0);
+      }
     } else {
       setLocalInput(currentValue > 0 ? String(currentValue) : '');
     }
   };
 
-  const handleMeasurementSave = () => {
+  const handleExplicitSave = () => {
     const parsed = parseFloat(localInput);
     if (!isNaN(parsed) && parsed >= 0) {
-      onUpdateValue(parsed);
+      commitValue(parsed);
+    } else if (localInput === '') {
+      commitValue(0);
     }
   };
 
   const handleBooleanToggle = () => {
-    onUpdateValue(isCompleted ? 0 : 1);
+    commitValue(isCompleted ? 0 : 1);
   };
 
   const handleAdjustValue = (delta: number) => {
     const nextVal = Math.max(0, Math.round((currentValue + delta) * 100) / 100);
-    onUpdateValue(nextVal);
+    setLocalInput(String(nextVal));
+    commitValue(nextVal);
   };
 
   return (
@@ -137,6 +151,14 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
 
         {/* Right Side: Quick Check-in Interactive Controls */}
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+          {/* Saved feedback badge */}
+          {justSaved && (
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 animate-fade-in">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Saved!
+            </span>
+          )}
+
           {/* Daily Note Button */}
           <button
             onClick={onOpenNote}
@@ -181,7 +203,7 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
                   value={localInput}
                   onChange={(e) => setLocalInput(e.target.value)}
                   onBlur={handleInputBlur}
-                  onKeyDown={(e) => e.key === 'Enter' && handleInputBlur()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleExplicitSave()}
                   className="w-20 rounded-md bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none ring-1 ring-brand-500 placeholder-slate-400"
                 />
                 <span className="px-2 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -189,59 +211,61 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
                 </span>
               </div>
               <button
-                onClick={handleMeasurementSave}
-                className="flex items-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold shadow-xs transition-colors"
-                title="Save measurement"
+                onClick={handleExplicitSave}
+                className="flex items-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white px-3 py-2 text-xs font-semibold shadow-xs transition-colors active:scale-95"
+                title="Save measurement to analytics and history"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>Log</span>
+                <span>Save Log</span>
               </button>
             </div>
           )}
 
           {/* 3. NUMERIC / COUNT GOAL CHECKIN */}
           {(goal.type === 'numeric' || goal.type === 'count') && (
-            <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-              <button
-                onClick={() => handleAdjustValue(goal.type === 'count' ? -1 : -Math.max(1, Math.round(goal.target / 10)))}
-                disabled={currentValue <= 0}
-                className="rounded-lg p-1.5 text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700 transition-colors disabled:opacity-30"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+                <button
+                  onClick={() => handleAdjustValue(goal.type === 'count' ? -1 : -Math.max(1, Math.round(goal.target / 10)))}
+                  disabled={currentValue <= 0}
+                  className="rounded-lg p-1.5 text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700 transition-colors disabled:opacity-30"
+                  title="Decrement"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
 
-              {isEditing ? (
                 <input
                   type="number"
-                  autoFocus
+                  step="any"
                   value={localInput}
                   onChange={(e) => setLocalInput(e.target.value)}
                   onBlur={handleInputBlur}
-                  onKeyDown={(e) => e.key === 'Enter' && handleInputBlur()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleExplicitSave()}
                   className="w-16 rounded-md bg-white dark:bg-slate-900 px-1.5 py-0.5 text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none ring-1 ring-brand-500"
                 />
-              ) : (
+
                 <button
-                  onClick={() => setIsEditing(true)}
-                  className="min-w-12 px-2 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"
-                  title="Click to edit value"
+                  onClick={() => handleAdjustValue(goal.type === 'count' ? 1 : Math.max(1, Math.round(goal.target / 10)))}
+                  className="rounded-lg p-1.5 text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+                  title="Increment"
                 >
-                  {currentValue}
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
-              )}
+              </div>
 
               <button
-                onClick={() => handleAdjustValue(goal.type === 'count' ? 1 : Math.max(1, Math.round(goal.target / 10)))}
-                className="rounded-lg p-1.5 text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+                onClick={handleExplicitSave}
+                className="p-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white transition-colors shadow-xs active:scale-95"
+                title="Save value"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Save className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
           {/* 4. DURATION GOAL CHECKIN */}
           {goal.type === 'duration' && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <div className="hidden sm:flex items-center gap-1">
                 <button
                   onClick={() => handleAdjustValue(goal.unit === 'hours' || goal.unit === 'hrs' ? 0.5 : 15)}
@@ -266,26 +290,15 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
                   <Minus className="w-3.5 h-3.5" />
                 </button>
 
-                {isEditing ? (
-                  <input
-                    type="number"
-                    step="any"
-                    autoFocus
-                    value={localInput}
-                    onChange={(e) => setLocalInput(e.target.value)}
-                    onBlur={handleInputBlur}
-                    onKeyDown={(e) => e.key === 'Enter' && handleInputBlur()}
-                    className="w-14 rounded-md bg-white dark:bg-slate-900 px-1 py-0.5 text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none ring-1 ring-brand-500"
-                  />
-                ) : (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="min-w-10 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"
-                    title="Click to edit value"
-                  >
-                    {currentValue}
-                  </button>
-                )}
+                <input
+                  type="number"
+                  step="any"
+                  value={localInput}
+                  onChange={(e) => setLocalInput(e.target.value)}
+                  onBlur={handleInputBlur}
+                  onKeyDown={(e) => e.key === 'Enter' && handleExplicitSave()}
+                  className="w-14 rounded-md bg-white dark:bg-slate-900 px-1 py-0.5 text-center text-xs font-bold text-slate-900 dark:text-white focus:outline-none ring-1 ring-brand-500"
+                />
 
                 <button
                   onClick={() => handleAdjustValue(goal.unit === 'hours' || goal.unit === 'hrs' ? 0.5 : 15)}
@@ -294,6 +307,14 @@ export const GoalCheckinItem: React.FC<GoalCheckinItemProps> = ({
                   <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              <button
+                onClick={handleExplicitSave}
+                className="p-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white transition-colors shadow-xs active:scale-95"
+                title="Save duration"
+              >
+                <Save className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
