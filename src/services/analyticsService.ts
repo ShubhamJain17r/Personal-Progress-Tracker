@@ -10,7 +10,7 @@ import {
   CategoryBreakdown,
 } from '../types/analytics';
 import { calculateCappedProgress, isGoalCompleted } from '../utils/calculations';
-import { getDateIntervalArray } from '../utils/dates';
+import { getDateIntervalArray, isGoalScheduledForDate, getScheduledDatesForGoal } from '../utils/dates';
 import { calculateGoalStreaks } from '../utils/streaks';
 
 export const analyticsService = {
@@ -38,9 +38,7 @@ export const analyticsService = {
       const rec = recordMap.get(dateStr);
       let val = rec ? rec.value : 0;
 
-      // For measurements, if there is a recorded entry use it; if no entry on this day,
-      // lastKnownVal can be preserved if there was an earlier reading, or 0 if unrecorded.
-      if (rec) {
+      if (rec && rec.value > 0) {
         lastKnownVal = rec.value;
       }
 
@@ -72,14 +70,18 @@ export const analyticsService = {
     dateRange: DateRange
   ): MetricSummary {
     const category = categories.find((c) => c.id === goal.categoryId);
-    const dateInterval = getDateIntervalArray(dateRange.startDate, dateRange.endDate);
-    const scheduledDaysCount = dateInterval.length;
+    const scheduledDates = getScheduledDatesForGoal(goal, dateRange.startDate, dateRange.endDate);
+    const scheduledDaysCount = scheduledDates.length;
     const isMeasurement = goal.type === 'measurement';
 
-    // Filter records within the specified date range and sort chronologically
     const rangeRecords = allRecordsForGoal
       .filter((r) => r.date >= dateRange.startDate && r.date <= dateRange.endDate)
       .sort((a, b) => a.date.localeCompare(b.date));
+
+    const recordMap = new Map<string, DailyRecord>();
+    for (const r of rangeRecords) {
+      recordMap.set(r.date, r);
+    }
 
     let totalValue = 0;
     let completedDays = 0;
@@ -87,8 +89,9 @@ export const analyticsService = {
     let maxValue = -Infinity;
     const recordedValues: number[] = [];
 
-    for (const rec of rangeRecords) {
-      if (rec.value > 0 || !isMeasurement) {
+    for (const dStr of scheduledDates) {
+      const rec = recordMap.get(dStr);
+      if (rec && (rec.value > 0 || isGoalCompleted(goal, rec.value))) {
         recordedValues.push(rec.value);
         totalValue += rec.value;
         if (rec.value < minValue) minValue = rec.value;
@@ -112,11 +115,9 @@ export const analyticsService = {
       : (scheduledDaysCount > 0 ? totalValue / scheduledDaysCount : 0);
 
     const missedDays = Math.max(0, scheduledDaysCount - completedDays);
-    const completionRate = isMeasurement
-      ? (recordedValues.length > 0 ? 100 : 0)
-      : (scheduledDaysCount > 0 ? Math.round((completedDays / scheduledDaysCount) * 100) : 0);
+    const completionRate =
+      scheduledDaysCount > 0 ? Math.round((completedDays / scheduledDaysCount) * 100) : 0;
 
-    // Calculate streaks across historical data
     const streaks = calculateGoalStreaks(goal, allRecordsForGoal, dateRange.endDate);
 
     return {
@@ -144,7 +145,7 @@ export const analyticsService = {
   },
 
   /**
-   * Calculates overall aggregate performance across all active goals
+   * Calculates overall aggregate performance across all active goals taking frequency into account
    */
   calculateOverallSummary(
     goals: Goal[],
@@ -158,7 +159,7 @@ export const analyticsService = {
 
     const goalMap = new Map(activeGoals.map((g) => [g.id, g]));
 
-    // Group records by date & goal
+    // Group records by date
     const dateMap = new Map<string, Map<string, DailyRecord>>();
     for (const r of records) {
       if (r.date >= dateRange.startDate && r.date <= dateRange.endDate && goalMap.has(r.goalId)) {
@@ -168,7 +169,7 @@ export const analyticsService = {
       }
     }
 
-    let totalPossibleCompletions = totalDays * activeGoals.length;
+    let totalPossibleCompletions = 0;
     let actualCompletedGoals = 0;
     let perfectDaysCount = 0;
     let totalCheckins = 0;
@@ -181,9 +182,11 @@ export const analyticsService = {
 
     for (const dStr of dates) {
       const dayRecs = dateMap.get(dStr);
+      const scheduledForDay = activeGoals.filter((g) => isGoalScheduledForDate(g, dStr));
       let dayCompletedCount = 0;
 
-      for (const goal of activeGoals) {
+      for (const goal of scheduledForDay) {
+        totalPossibleCompletions++;
         const stat = catStats.get(goal.categoryId) || { total: 0, completed: 0 };
         stat.total++;
 
@@ -199,7 +202,7 @@ export const analyticsService = {
         catStats.set(goal.categoryId, stat);
       }
 
-      if (activeGoals.length > 0 && dayCompletedCount >= activeGoals.length) {
+      if (scheduledForDay.length > 0 && dayCompletedCount >= scheduledForDay.length) {
         perfectDaysCount++;
       }
     }
@@ -246,7 +249,6 @@ export const analyticsService = {
     const dates = getDateIntervalArray(dateRange.startDate, dateRange.endDate);
     const goalMap = new Map(activeGoals.map((g) => [g.id, g]));
 
-    // Group records by date
     const dateRecords = new Map<string, DailyRecord[]>();
     for (const r of records) {
       if (goalMap.has(r.goalId)) {
@@ -257,15 +259,18 @@ export const analyticsService = {
     }
 
     return dates.map((dateStr) => {
+      const scheduledForDay = activeGoals.filter((g) => isGoalScheduledForDate(g, dateStr));
       const list = dateRecords.get(dateStr) || [];
       let completed = 0;
+
       for (const r of list) {
         const g = goalMap.get(r.goalId);
-        if (g && isGoalCompleted(g, r.value)) {
+        if (g && isGoalScheduledForDate(g, dateStr) && isGoalCompleted(g, r.value)) {
           completed++;
         }
       }
-      const total = activeGoals.length;
+
+      const total = scheduledForDay.length;
       const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
       return { date: dateStr, rate, completed, total };
     });

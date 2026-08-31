@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Target, Calendar } from 'lucide-react';
+import { Plus, Target, Calendar, Sparkles, Filter } from 'lucide-react';
 import { useGoals } from '../hooks/useGoals';
 import { useDailyRecords } from '../hooks/useDailyRecords';
 import { useCategories } from '../hooks/useCategories';
-import { getTodayDateString, formatDisplayDate } from '../utils/dates';
+import { getTodayDateString, formatDisplayDate, isGoalScheduledForDate } from '../utils/dates';
 import { DailyProgressCard } from '../components/dashboard/DailyProgressCard';
 import { GoalCheckinItem } from '../components/dashboard/GoalCheckinItem';
 import { NoteModal } from '../components/dashboard/NoteModal';
@@ -25,14 +25,21 @@ export const Dashboard: React.FC<{ onNavigateToGoals?: () => void }> = () => {
   const { records: allRecords } = useDailyRecords();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showAllActive, setShowAllActive] = useState<boolean>(false);
   const [activeNoteGoal, setActiveNoteGoal] = useState<Goal | null>(null);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   const recordMap = new Map(todayRecords.map((r) => [r.goalId, r]));
 
+  // Scheduled goals for today (weekly goals only show on Sundays, weekdays on Mon-Fri, etc.)
+  const scheduledGoalsForToday = activeGoals.filter((g) => isGoalScheduledForDate(g, today));
+  const activeList = showAllActive ? activeGoals : scheduledGoalsForToday;
+
+  const otherScheduledCount = activeGoals.length - scheduledGoalsForToday.length;
+
   let completedCount = 0;
-  for (const goal of activeGoals) {
+  for (const goal of scheduledGoalsForToday) {
     const rec = recordMap.get(goal.id);
     if (rec && isGoalCompleted(goal, rec.value)) {
       completedCount++;
@@ -41,7 +48,7 @@ export const Dashboard: React.FC<{ onNavigateToGoals?: () => void }> = () => {
 
   const overallStreak = calculateOverallStreaks(activeGoals, allRecords, today).currentStreak;
 
-  const filteredGoals = activeGoals.filter((g) =>
+  const filteredGoals = activeList.filter((g) =>
     selectedCategory === 'all' ? true : g.categoryId === selectedCategory
   );
 
@@ -85,22 +92,57 @@ export const Dashboard: React.FC<{ onNavigateToGoals?: () => void }> = () => {
           </h1>
         </div>
 
-        <Button
-          onClick={() => setIsGoalModalOpen(true)}
-          leftIcon={<Plus className="w-4 h-4" />}
-          size="sm"
-        >
-          Add Goal
-        </Button>
+        <div className="flex items-center gap-2">
+          {otherScheduledCount > 0 && (
+            <button
+              onClick={() => setShowAllActive(!showAllActive)}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all',
+                showAllActive
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              )}
+              title="Toggle view between today's scheduled tasks and all active goals"
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span>{showAllActive ? 'Showing All Goals' : `Scheduled Today (${scheduledGoalsForToday.length})`}</span>
+            </button>
+          )}
+
+          <Button
+            onClick={() => setIsGoalModalOpen(true)}
+            leftIcon={<Plus className="w-4 h-4" />}
+            size="sm"
+          >
+            Add Goal
+          </Button>
+        </div>
       </div>
 
       {activeGoals.length > 0 && (
         <DailyProgressCard
           completedGoalsCount={completedCount}
-          totalGoalsCount={activeGoals.length}
+          totalGoalsCount={scheduledGoalsForToday.length}
           overallStreak={overallStreak}
           dateLabel="Today's"
         />
+      )}
+
+      {otherScheduledCount > 0 && !showAllActive && (
+        <div className="flex items-center justify-between p-3 rounded-2xl bg-brand-50/50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/40 text-xs text-slate-600 dark:text-slate-300">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-brand-500 shrink-0" />
+            <span>
+              <strong>{otherScheduledCount} weekly/periodic task(s)</strong> are scheduled for Sundays and other days.
+            </span>
+          </div>
+          <button
+            onClick={() => setShowAllActive(true)}
+            className="font-bold text-brand-600 dark:text-brand-400 hover:underline shrink-0"
+          >
+            View All ({activeGoals.length})
+          </button>
+        </div>
       )}
 
       {activeGoals.length > 0 && categories.length > 0 && (
@@ -114,10 +156,10 @@ export const Dashboard: React.FC<{ onNavigateToGoals?: () => void }> = () => {
                 : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             )}
           >
-            All Categories ({activeGoals.length})
+            All ({activeList.length})
           </button>
           {categories.map((c) => {
-            const count = activeGoals.filter((g) => g.categoryId === c.id).length;
+            const count = activeList.filter((g) => g.categoryId === c.id).length;
             if (count === 0) return null;
             return (
               <button
@@ -167,7 +209,7 @@ export const Dashboard: React.FC<{ onNavigateToGoals?: () => void }> = () => {
         />
       ) : (
         <div className="text-center py-10 text-xs text-slate-400">
-          No goals found in this category.
+          No goals scheduled in this category for today.
         </div>
       )}
 

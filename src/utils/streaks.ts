@@ -1,7 +1,8 @@
-import { format, parseISO, subDays, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { DailyRecord } from '../types/record';
 import { Goal } from '../types/goal';
 import { isGoalCompleted } from './calculations';
+import { isGoalScheduledForDate, getScheduledDatesForGoal } from './dates';
 
 export interface StreakResult {
   currentStreak: number;
@@ -24,58 +25,44 @@ export function calculateGoalStreaks(
     }
   }
 
-  const dates = Array.from(completionMap.keys()).sort();
-  if (dates.length === 0) {
+  const recordedDates = Array.from(completionMap.keys()).sort();
+  if (recordedDates.length === 0) {
     return { currentStreak: 0, bestStreak: 0 };
   }
 
+  const earliestDate = recordedDates[0];
+  const scheduledDates = getScheduledDatesForGoal(goal, earliestDate, referenceDateStr);
+
   let bestStreak = 0;
   let runningStreak = 0;
-  let prevDate: Date | null = null;
 
-  for (const dateStr of dates) {
-    const isComp = completionMap.get(dateStr) || false;
-    const currDate = parseISO(dateStr);
-
+  for (const dStr of scheduledDates) {
+    const isComp = completionMap.get(dStr) || false;
     if (isComp) {
-      if (prevDate) {
-        const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays === 1) {
-          runningStreak++;
-        } else {
-          runningStreak = 1;
-        }
-      } else {
-        runningStreak = 1;
+      runningStreak++;
+      if (runningStreak > bestStreak) {
+        bestStreak = runningStreak;
       }
-      prevDate = currDate;
-      bestStreak = Math.max(bestStreak, runningStreak);
     } else {
       runningStreak = 0;
-      prevDate = null;
     }
   }
 
+  // Calculate current active streak backward from the most recent scheduled date
   let currentStreak = 0;
-  let checkDate = parseISO(referenceDateStr);
-  if (!isValid(checkDate)) {
-    return { currentStreak: 0, bestStreak };
-  }
+  const reversedScheduled = [...scheduledDates].reverse();
 
-  const todayCompleted = completionMap.get(referenceDateStr);
+  for (let i = 0; i < reversedScheduled.length; i++) {
+    const dStr = reversedScheduled[i];
+    const isComp = completionMap.get(dStr) || false;
 
-  if (todayCompleted) {
-    currentStreak++;
-    checkDate = subDays(checkDate, 1);
-  } else {
-    checkDate = subDays(checkDate, 1);
-  }
+    // If today is scheduled and not yet completed, allow yesterday's/last scheduled day streak to count
+    if (i === 0 && dStr === referenceDateStr && !isComp) {
+      continue;
+    }
 
-  while (true) {
-    const dStr = format(checkDate, 'yyyy-MM-dd');
-    if (completionMap.get(dStr)) {
+    if (isComp) {
       currentStreak++;
-      checkDate = subDays(checkDate, 1);
     } else {
       break;
     }
@@ -109,19 +96,28 @@ export function calculateOverallStreaks(
   }
 
   const isDaySuccessful = (dateStr: string): boolean => {
+    // Only check goals scheduled for dateStr
+    const scheduled = activeGoals.filter((g) => isGoalScheduledForDate(g, dateStr));
+    if (scheduled.length === 0) return true;
+
     const list = dateRecords.get(dateStr);
     if (!list || list.length === 0) return false;
+
     let completedCount = 0;
     for (const r of list) {
       const goal = goalMap.get(r.goalId);
-      if (goal && isGoalCompleted(goal, r.value)) {
+      if (goal && isGoalScheduledForDate(goal, dateStr) && isGoalCompleted(goal, r.value)) {
         completedCount++;
       }
     }
-    return completedCount >= activeGoals.length;
+    return completedCount >= scheduled.length;
   };
 
   const dates = Array.from(dateRecords.keys()).sort();
+  if (dates.length === 0) {
+    return { currentStreak: 0, bestStreak: 0 };
+  }
+
   let bestStreak = 0;
   let running = 0;
   let prevDate: Date | null = null;
@@ -151,18 +147,21 @@ export function calculateOverallStreaks(
 
   let currentStreak = 0;
   let checkDate = parseISO(referenceDateStr);
-  if (isDaySuccessful(referenceDateStr)) {
-    currentStreak++;
-    checkDate = subDays(checkDate, 1);
-  } else {
-    checkDate = subDays(checkDate, 1);
+  if (!isValid(checkDate)) {
+    return { currentStreak: 0, bestStreak };
   }
 
+  const todaySuccessful = isDaySuccessful(referenceDateStr);
+  if (todaySuccessful) {
+    currentStreak++;
+  }
+
+  let testDate = parseISO(referenceDateStr);
   while (true) {
-    const dStr = format(checkDate, 'yyyy-MM-dd');
+    testDate = new Date(testDate.getTime() - 86400000);
+    const dStr = format(testDate, 'yyyy-MM-dd');
     if (isDaySuccessful(dStr)) {
       currentStreak++;
-      checkDate = subDays(checkDate, 1);
     } else {
       break;
     }
